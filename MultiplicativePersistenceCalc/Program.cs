@@ -6,11 +6,16 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Timer = System.Timers.Timer;
+
 namespace MultiplicativePersistenceCalc
 {
     class Program
     {
         static readonly ConcurrentQueue<BigInteger> inputs = new ConcurrentQueue<BigInteger>();
+        static readonly Timer populateTimer = new Timer();
+        static readonly Timer calculateTimer = new Timer();
+        static BigInteger currentNumber;
 
         static void Main(string[] args)
         {
@@ -50,12 +55,37 @@ namespace MultiplicativePersistenceCalc
                     {
                         Console.WriteLine("Invalid input.  Try again.");
                     }
-                    BigInteger startingNumber = GenerateStartingNumber(startingLength);
+                    currentNumber = GenerateStartingNumber(startingLength);
+
+                    var tasks = new List<Task>(2);
+
+                    CancellationTokenSource cts = new CancellationTokenSource();
+                    CancellationToken ct = cts.Token;
+
+                    tasks.Add(Task.Factory.StartNew(() => StartQueuePopulation(ct), ct, TaskCreationOptions.LongRunning, TaskScheduler.Default));
+
+                    Console.WriteLine("Successfully started threads to populate queue with numbers.");
+
+                    tasks.Add(Task.Factory.StartNew(() => StartQueueProcessing(ct), ct, TaskCreationOptions.LongRunning, TaskScheduler.Default));
+
+                    Console.WriteLine("Successfully started threads to calculate.");
+
+                    Console.WriteLine("Press ESC to exit.");
 
                     while(true)
                     {
-                        inputs.Enqueue(startingNumber++);
+                        if(Console.ReadKey(true).Key == ConsoleKey.Escape)
+                        {
+                            cts.Cancel();
+                            break;
+                        }
                     }
+
+                    Task.WaitAll(tasks.ToArray());
+
+                    Console.WriteLine("Successfully stopped all threads.  Press any key to quit.");
+                    Console.ReadKey(true);
+
                 }
                 else
                 {
@@ -98,24 +128,51 @@ namespace MultiplicativePersistenceCalc
             return result;
         }
 
-        static void PopulateQueue(BigInteger startingNumber, CancellationToken ct)
+        static void StartQueuePopulation(CancellationToken ct)
         {
-            while(true)
-            {
-                if(ct.IsCancellationRequested)
-                {
-                    break;
-                }
-                if(inputs.Count < 500)
-                {
-                    inputs.Enqueue(startingNumber++);
-                }
-            }
+            populateTimer.Interval = 500;
+            populateTimer.AutoReset = false;
+            populateTimer.Enabled = true;
+            populateTimer.Elapsed += PopulateQueue;
+            populateTimer.Start();
+
+            ct.WaitHandle.WaitOne();
+
+            // TODO: Add logic to wait for current timer tasks to spin down
         }
 
-        static void ProcessQueue(CancellationToken ct)
+        static void PopulateQueue(object sender, EventArgs e)
         {
+            // TODO: Lock and set bool flag that tells that this is running and stop the timer
+            while (inputs.Count < 500)
+            {
+                // TODO: Evaluate whether you can keep modifying and enqueueing the same reference
+                //       many times like thise
+                inputs.Enqueue(currentNumber++);
+            }
+            // TODO: Lock and set bool flag that tells that this is done running and start the timer
+        }
 
+        static void StartQueueProcessing(CancellationToken ct)
+        {
+            calculateTimer.Interval = 500;
+            calculateTimer.AutoReset = false;
+            calculateTimer.Enabled = true;
+            calculateTimer.Elapsed += ProcessQueue;
+            calculateTimer.Start();
+
+            ct.WaitHandle.WaitOne();
+
+            // TODO: Add logic to wait for current timer tasks to spin down
+        }
+
+        static void ProcessQueue(object sender, EventArgs e)
+        {
+            // TODO: Lock and set bool flag that tells that this is running and stop the timer
+
+            // TODO: Process in parallel
+
+            // TODO: Lock and set bool flag that tells that this is done running and start the timer
         }
     }
 }
